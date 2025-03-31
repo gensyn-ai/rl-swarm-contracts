@@ -6,6 +6,7 @@ This repository contains the smart contracts for the RL Swarm project, focusing 
 
 ### Gensyn testnet
 
+- v0.3 - [0x2fC68a233EF9E9509f034DD551FF90A79a0B8F82](https://gensyn-testnet.explorer.alchemy.com/address/0x2fC68a233EF9E9509f034DD551FF90A79a0B8F82?tab=contract)
 - v0.2 - [0xcD1351B125b0ae4f023ADA5D09443087a7d99101](https://gensyn-testnet.explorer.alchemy.com/address/0xcD1351B125b0ae4f023ADA5D09443087a7d99101?tab=contract)
 - v0.1 - [0x77bd0fcB5349F67C8fA1236E98e2b93334F4Db6E](https://gensyn-testnet.explorer.alchemy.com/address/0x77bd0fcB5349F67C8fA1236E98e2b93334F4Db6E?tab=contract)
 
