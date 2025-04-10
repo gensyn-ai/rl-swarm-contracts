@@ -27,7 +27,7 @@ contract SwarmCoordinator is UUPSUpgradeable {
     // Total number of stages in a round
     uint256 _stageCount = 0;
     // Maps EOA addresses to their corresponding peer IDs
-    mapping(address => string) _eoaToPeerId;
+    mapping(address => string[]) _eoaToPeerId;
     // Maps peer IDs to their corresponding EOA addresses
     mapping(string => address) _peerIdToEoa;
 
@@ -109,7 +109,6 @@ contract SwarmCoordinator is UUPSUpgradeable {
     error InvalidRoundNumber();
     error WinnerAlreadyVoted();
     error PeerIdAlreadyRegistered();
-    error EoaAlreadyHasPeerId();
     error InvalidPeerId();
     error OnlyOwner();
     error OnlyBootnodeManager();
@@ -292,11 +291,8 @@ contract SwarmCoordinator is UUPSUpgradeable {
         // Check if the peer ID is already registered
         if (_peerIdToEoa[peerId] != address(0)) revert PeerIdAlreadyRegistered();
 
-        // Check if the EOA already has a peer ID
-        if (bytes(_eoaToPeerId[eoa]).length > 0) revert EoaAlreadyHasPeerId();
-
         // Set new mappings
-        _eoaToPeerId[eoa] = peerId;
+        _eoaToPeerId[eoa].push(peerId);
         _peerIdToEoa[peerId] = eoa;
 
         emit PeerRegistered(eoa, peerId);
@@ -307,8 +303,8 @@ contract SwarmCoordinator is UUPSUpgradeable {
      * @param eoas Array of EOA addresses to look up
      * @return Array of peer IDs associated with the EOA addresses
      */
-    function getPeerId(address[] calldata eoas) external view returns (string[] memory) {
-        string[] memory peerIds = new string[](eoas.length);
+    function getPeerId(address[] calldata eoas) external view returns (string[][] memory) {
+        string[][] memory peerIds = new string[][](eoas.length);
         for (uint256 i = 0; i < eoas.length; i++) {
             peerIds[i] = _eoaToPeerId[eoas[i]];
         }
