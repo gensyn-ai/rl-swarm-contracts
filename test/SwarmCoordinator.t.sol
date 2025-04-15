@@ -416,6 +416,21 @@ contract SwarmCoordinatorTest is Test {
         assertEq(swarmCoordinator.getPeerVoteCount(0, winners[1]), 1);
     }
 
+    function test_Nobody_CanSubmitMultipleWinner_ForSameRound() public {
+        string[] memory winners = new string[](2);
+        winners[0] = "QmWinner1";
+        winners[1] = "QmWinner1";
+
+        // Register peer ID first
+        vm.prank(_user1);
+        swarmCoordinator.registerPeer(winners[0]);
+
+        // Submit winners for round 0
+        vm.prank(_user1);
+        vm.expectRevert(SwarmCoordinator.InvalidVote.selector);
+        swarmCoordinator.submitWinners(0, winners);
+    }
+
     function test_Nobody_CanSubmitWinners_ForFutureRound() public {
         string[] memory winners = new string[](1);
         winners[0] = "QmWinner1";

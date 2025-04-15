@@ -113,6 +113,7 @@ contract SwarmCoordinator is UUPSUpgradeable {
     error OnlyOwner();
     error OnlyBootnodeManager();
     error OnlyStageManager();
+    error InvalidVote();
 
     // .-------------------------------------------------------------------------------------.
     // | ██████   ██████              █████  ███     ██████   ███                            |
@@ -414,6 +415,15 @@ contract SwarmCoordinator is UUPSUpgradeable {
 
         // Check if sender has already voted
         if (_roundVotes[roundNumber][msg.sender].length > 0) revert WinnerAlreadyVoted();
+
+        // Check for duplicate winners
+        for (uint256 i = 0; i < winners.length; i++) {
+            for (uint256 j = i + 1; j < winners.length; j++) {
+                if (keccak256(bytes(winners[i])) == keccak256(bytes(winners[j]))) {
+                    revert InvalidVote();
+                }
+            }
+        }
 
         // If this is the first time this address has voted, increment unique voters
         if (_voterVoteCounts[msg.sender] == 0) {
