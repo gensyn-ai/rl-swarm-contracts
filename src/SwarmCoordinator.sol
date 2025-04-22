@@ -34,18 +34,12 @@ contract SwarmCoordinator is UUPSUpgradeable {
     // Winner management state
     // Maps peer ID to total number of wins
     mapping(string => uint256) private _totalWins;
-    // Array of top winners (sorted by wins)
-    string[] private _topWinners;
-    // Maximum number of top winners to track
-    uint256 private constant MAX_TOP_WINNERS = 100;
     // Maps round number to mapping of voter address to their voted peer IDs
     mapping(uint256 => mapping(address => string[])) private _roundVotes;
     // Maps round number to mapping of peer ID to number of votes received
     mapping(uint256 => mapping(string => uint256)) private _roundVoteCounts;
     // Maps voter address to number of times they have voted
     mapping(address => uint256) private _voterVoteCounts;
-    // Array of top voters (sorted by number of votes)
-    address[] private _topVoters;
     // Number of unique voters who have participated
     uint256 private _uniqueVoters;
     // Number of unique peers that have been voted on
@@ -426,6 +420,7 @@ contract SwarmCoordinator is UUPSUpgradeable {
         // Update vote counts and track unique voted peers
         for (uint256 i = 0; i < winners.length; i++) {
             _roundVoteCounts[roundNumber][winners[i]]++;
+
             // If this peer has never been voted on before, increment unique voted peers
             if (!_hasBeenVotedOn[winners[i]]) {
                 _hasBeenVotedOn[winners[i]] = true;
@@ -435,105 +430,13 @@ contract SwarmCoordinator is UUPSUpgradeable {
 
         // Update how many times each voter has voted
         _voterVoteCounts[msg.sender]++;
-        _updateTopVoters(msg.sender);
 
-        // Update total wins and top winners
+        // Update total wins
         for (uint256 i = 0; i < winners.length; i++) {
             _totalWins[winners[i]]++;
-            _updateTopWinners(winners[i]);
         }
 
         emit WinnerSubmitted(msg.sender, roundNumber, winners);
-    }
-
-    /**
-     * @dev Updates the top voters list when a voter's score changes
-     * @param voter The address whose score has changed
-     */
-    function _updateTopVoters(address voter) internal {
-        uint256 voterVotes = _voterVoteCounts[voter];
-
-        // Find if voter is already in the list
-        uint256 currentIndex = type(uint256).max;
-        for (uint256 i = 0; i < _topVoters.length; i++) {
-            if (_topVoters[i] == voter) {
-                currentIndex = i;
-                break;
-            }
-        }
-
-        if (currentIndex == type(uint256).max) {
-            // Voter is not in the list
-            if (_topVoters.length < MAX_TOP_WINNERS) {
-                // List is not full, add to end
-                _topVoters.push(voter);
-                currentIndex = _topVoters.length - 1;
-            } else {
-                // List is full, check if voter should be added
-                if (_voterVoteCounts[_topVoters[_topVoters.length - 1]] < voterVotes) {
-                    // Replace last place
-                    _topVoters[_topVoters.length - 1] = voter;
-                    currentIndex = _topVoters.length - 1;
-                } else {
-                    // Voter doesn't qualify for top list
-                    return;
-                }
-            }
-        }
-
-        // Move voter up in the list if needed
-        while (currentIndex > 0 && _voterVoteCounts[_topVoters[currentIndex - 1]] < voterVotes) {
-            // Swap with previous position
-            address temp = _topVoters[currentIndex - 1];
-            _topVoters[currentIndex - 1] = _topVoters[currentIndex];
-            _topVoters[currentIndex] = temp;
-            currentIndex--;
-        }
-    }
-
-    /**
-     * @dev Updates the top winners list when a winner's score changes
-     * @param winner The peer ID whose score has changed
-     */
-    function _updateTopWinners(string memory winner) internal {
-        uint256 winnerWins = _totalWins[winner];
-
-        // Find if winner is already in the list
-        uint256 currentIndex = type(uint256).max;
-        for (uint256 i = 0; i < _topWinners.length; i++) {
-            if (keccak256(bytes(_topWinners[i])) == keccak256(bytes(winner))) {
-                currentIndex = i;
-                break;
-            }
-        }
-
-        if (currentIndex == type(uint256).max) {
-            // Winner is not in the list
-            if (_topWinners.length < MAX_TOP_WINNERS) {
-                // List is not full, add to end
-                _topWinners.push(winner);
-                currentIndex = _topWinners.length - 1;
-            } else {
-                // List is full, check if winner should be added
-                if (_totalWins[_topWinners[_topWinners.length - 1]] < winnerWins) {
-                    // Replace last place
-                    _topWinners[_topWinners.length - 1] = winner;
-                    currentIndex = _topWinners.length - 1;
-                } else {
-                    // Winner doesn't qualify for top list
-                    return;
-                }
-            }
-        }
-
-        // Move winner up in the list if needed
-        while (currentIndex > 0 && _totalWins[_topWinners[currentIndex - 1]] < winnerWins) {
-            // Swap with previous position
-            string memory temp = _topWinners[currentIndex - 1];
-            _topWinners[currentIndex - 1] = _topWinners[currentIndex];
-            _topWinners[currentIndex] = temp;
-            currentIndex--;
-        }
     }
 
     /**
@@ -543,46 +446,6 @@ contract SwarmCoordinator is UUPSUpgradeable {
      */
     function getVoterVoteCount(address voter) external view returns (uint256) {
         return _voterVoteCounts[voter];
-    }
-
-    /**
-     * @dev Gets a slice of the voter leaderboard
-     * @param start The starting index (inclusive)
-     * @param end The ending index (exclusive)
-     * @return voters Array of addresses sorted by number of votes (descending)
-     * @return voteCounts Array of corresponding vote counts
-     */
-    function voterLeaderboard(uint256 start, uint256 end)
-        external
-        view
-        returns (address[] memory voters, uint256[] memory voteCounts)
-    {
-        // Ensure start is not greater than end
-        require(start <= end, "Start index must be less than or equal to end index");
-
-        // Ensure end is not greater than the length of the list
-        if (end > _topVoters.length) {
-            end = _topVoters.length;
-        }
-
-        // Ensure start is not greater than the length of the list
-        if (start > _topVoters.length) {
-            start = _topVoters.length;
-        }
-
-        // Create result arrays with the correct size
-        uint256 length = end - start;
-        voters = new address[](length);
-        voteCounts = new uint256[](length);
-
-        // Fill the arrays
-        for (uint256 i = start; i < end; i++) {
-            uint256 index = i - start;
-            voters[index] = _topVoters[i];
-            voteCounts[index] = _voterVoteCounts[_topVoters[i]];
-        }
-
-        return (voters, voteCounts);
     }
 
     /**
@@ -612,46 +475,6 @@ contract SwarmCoordinator is UUPSUpgradeable {
      */
     function getPeerVoteCount(uint256 roundNumber, string calldata peerId) external view returns (uint256) {
         return _roundVoteCounts[roundNumber][peerId];
-    }
-
-    /**
-     * @dev Gets a slice of the leaderboard
-     * @param start The starting index (inclusive)
-     * @param end The ending index (exclusive)
-     * @return peerIds Array of peer IDs sorted by number of wins (descending)
-     * @return wins Array of corresponding win counts
-     */
-    function winnerLeaderboard(uint256 start, uint256 end)
-        external
-        view
-        returns (string[] memory peerIds, uint256[] memory wins)
-    {
-        // Ensure start is not greater than end
-        require(start <= end, "Start index must be less than or equal to end index");
-
-        // Ensure end is not greater than the length of the list
-        if (end > _topWinners.length) {
-            end = _topWinners.length;
-        }
-
-        // Ensure start is not greater than the length of the list
-        if (start > _topWinners.length) {
-            start = _topWinners.length;
-        }
-
-        // Create result arrays with the correct size
-        uint256 length = end - start;
-        peerIds = new string[](length);
-        wins = new uint256[](length);
-
-        // Fill the arrays
-        for (uint256 i = start; i < end; i++) {
-            uint256 index = i - start;
-            peerIds[index] = _topWinners[i];
-            wins[index] = _totalWins[_topWinners[i]];
-        }
-
-        return (peerIds, wins);
     }
 
     /**
