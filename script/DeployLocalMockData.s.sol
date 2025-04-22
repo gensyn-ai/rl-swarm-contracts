@@ -112,25 +112,34 @@ contract DeployLocalMockData is Script {
         user2Round2Winners[0] = "QmPeer1";
         user2Round2Winners[1] = "QmPeer3";
         coordinator.submitWinners(2, user2Round2Winners);
-        // User 3 winners
-        // vm.broadcast(user3.privateKey);
-        // string[] memory user3Round2Winners = new string[](2);
-        // user3Round2Winners[0] = "QmPeer1";
-        // user3Round2Winners[1] = "QmPeer2";
-        // coordinator.submitWinners(2, user3Round2Winners);
+        // User 3 winners are not submitted for round 2
 
-        // Get top winners
-        (string[] memory topWinners, uint256[] memory winnerWins) = coordinator.winnerLeaderboard(0, 3);
-        console2.log("Top winners and their wins:");
-        for (uint256 i = 0; i < topWinners.length; i++) {
-            console2.log(topWinners[i], winnerWins[i]);
+        // Display individual winner information
+        string[] memory peerIds = new string[](3);
+        peerIds[0] = "QmPeer1";
+        peerIds[1] = "QmPeer2";
+        peerIds[2] = "QmPeer3";
+
+        console2.log("Win counts for each peer:");
+        for (uint256 i = 0; i < peerIds.length; i++) {
+            uint256 wins = coordinator.getTotalWins(peerIds[i]);
+            console2.log(peerIds[i], wins);
         }
 
-        // Get top voters
-        (address[] memory topVoters, uint256[] memory voterVotes) = coordinator.voterLeaderboard(0, 3);
-        console2.log("Top voters and their votes:");
-        for (uint256 i = 0; i < topVoters.length; i++) {
-            console2.log(topVoters[i], voterVotes[i]);
+        // Display individual voter information
+        address[] memory voters = new address[](3);
+        voters[0] = user1.addr;
+        voters[1] = user2.addr;
+        voters[2] = user3.addr;
+
+        console2.log("Vote counts for each voter:");
+        for (uint256 i = 0; i < voters.length; i++) {
+            uint256 voteCount = coordinator.getVoterVoteCount(voters[i]);
+            console2.log(voters[i], voteCount);
         }
+
+        // Display unique voter and voted peer counts
+        console2.log("Total unique voters:", coordinator.uniqueVoters());
+        console2.log("Total unique voted peers:", coordinator.uniqueVotedPeers());
     }
 }
