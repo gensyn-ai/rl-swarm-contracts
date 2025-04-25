@@ -20,3 +20,6 @@ docs/
 # Coverage files
 report/
 lcov.info
+
+# Direnv cache
+.direnv/
