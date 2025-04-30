@@ -38,8 +38,8 @@ contract SwarmCoordinator is UUPSUpgradeable {
     string[] private _topWinners;
     // Maximum number of top winners to track
     uint256 private constant MAX_TOP_WINNERS = 100;
-    // Maps round number to mapping of voter address to their voted peer IDs
-    mapping(uint256 => mapping(string => string[])) private _roundVotes;
+    // Maps round number to mapping of voter address to whether they have voted
+    mapping(uint256 => mapping(string => bool)) private _roundVoted;
     // Maps round number to mapping of peer ID to number of votes received
     mapping(uint256 => mapping(string => uint256)) private _roundVoteCounts;
     // Maps voter address to number of times they have voted
@@ -433,7 +433,7 @@ contract SwarmCoordinator is UUPSUpgradeable {
         if (roundNumber > _currentRound) revert InvalidRoundNumber();
 
         // Check if sender has already voted
-        if (_roundVotes[roundNumber][peerId].length > 0) revert WinnerAlreadyVoted();
+        if (_roundVoted[roundNumber][peerId]) revert WinnerAlreadyVoted();
 
         // Check if the peer ID belongs to the sender
         if (_peerIdToEoa[peerId] != msg.sender) revert InvalidVoterPeerId();
@@ -453,7 +453,7 @@ contract SwarmCoordinator is UUPSUpgradeable {
         }
 
         // Record the vote
-        _roundVotes[roundNumber][peerId] = winners;
+        _roundVoted[roundNumber][peerId] = true;
 
         // Update vote counts and track unique voted peers
         for (uint256 i = 0; i < winners.length; i++) {
@@ -640,16 +640,6 @@ contract SwarmCoordinator is UUPSUpgradeable {
      */
     function getTotalWins(string calldata peerId) external view returns (uint256) {
         return _totalWins[peerId];
-    }
-
-    /**
-     * @dev Gets the votes for a specific round from a specific peer ID
-     * @param roundNumber The round number to query
-     * @param peerId The peer ID of the voter
-     * @return Array of peer IDs that the voter voted for
-     */
-    function getVoterVotes(uint256 roundNumber, string calldata peerId) external view returns (string[] memory) {
-        return _roundVotes[roundNumber][peerId];
     }
 
     /**
