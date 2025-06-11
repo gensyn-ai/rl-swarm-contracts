@@ -63,24 +63,21 @@ If you want to interact with the contract, use the `SwarmCoordinatorProxy`.
 
 The main contract `SwarmCoordinator` manages a round-based system for coordinating swarm participants, tracking winners, reporting rewards, and managing bootnode infrastructure. The contract includes features for:
 
-- Round and stage management
+- Round management
 - Peer registration and tracking
 - Bootnode management
 - Winner submission and reward tracking
-- Unique voter tracking across rounds
-- Unique voted peer tracking across rounds
 
 ## Roles
 
 1. **Owner**
-   - Can set stage count
    - Can assign bootnode manager role
-   - Can set stage updater
+   - Can set round manager
    - Can grant and revoke any role
    - Initially deployed contract owner
 
-2. **Stage Manager**
-   - Can advance stages and rounds
+2. **Round Manager**
+   - Can advance rounds
    - Initially set to contract owner
 
 3. **Bootnode Manager**
@@ -98,11 +95,10 @@ The main contract `SwarmCoordinator` manages a round-based system for coordinati
 function registerPeer(string calldata peerId) external
 ```
 
-#### View current round and stage
+#### View current round
 
 ```solidity
 function currentRound() external view returns (uint256)
-function currentStage() external view returns (uint256)
 ```
 
 #### Check total wins
@@ -113,104 +109,74 @@ function getTotalWins(string calldata peerId) external view returns (uint256)
 
 #### View the leaderboard
 
-```solidity
-function winnerLeaderboard(uint256 start, uint256 end) external view returns (string[] memory peerIds, uint256[] memory wins)
-function voterLeaderboard(uint256 start, uint256 end) external view returns (string[] memory peerIds, uint256[] memory voteCounts)
-```
+This should be done off-chain by listening to events since v0.5.0.
 
-Returns slices of the leaderboards:
-
-- `winnerLeaderboard`: Returns peer IDs and their win counts, sorted by number of wins (descending)
-- `voterLeaderboard`: Returns peer IDs and their vote counts, sorted by number of votes (descending)
-
-Both leaderboards track up to 100 top entries. The `start` and `end` parameters define the range of positions to return (inclusive start, exclusive end).
-
-#### Check unique voter count
+#### Check rewards earned by peers
 
 ```solidity
-function uniqueVoters() external view returns (uint256)
+function getTotalRewards(string[] calldata peerIds) external view returns (int256[] memory)
 ```
 
-Returns the total number of unique addresses that have participated in voting across all rounds. Each address is counted only once, regardless of how many times they have voted.
-
-#### Check unique voted peer count
+#### Submit rewards
 
 ```solidity
-function uniqueVotedPeers() external view returns (uint256)
+function submitReward(uint256 roundNumber, int256 reward, string calldata peerId) external
 ```
 
-Returns the total number of unique peer IDs that have received votes across all rounds. Each peer is counted only once, regardless of how many times they have been voted for.
-
-#### Get peer and EOA mappings
+#### Submit winners
 
 ```solidity
-function getPeerId(address[] calldata eoas) external view returns (string[][] memory)
-function getEoa(string[] calldata peerIds) external view returns (address[] memory)
+function submitWinners(uint256 roundNumber, string[] memory winners, string calldata peerId) external
 ```
 
-Get peer IDs for multiple EOAs or EOAs for multiple peer IDs.
+### For Admins
 
-#### Get voting information
+#### Grant and Revoke Roles
+
+Only callable by accounts with the `OWNER_ROLE`.
 
 ```solidity
-function getVoterVoteCount(string calldata peerId) external view returns (uint256)
-function getVoterVotes(uint256 roundNumber, string calldata peerId) external view returns (string[] memory)
-function getPeerVoteCount(uint256 roundNumber, string calldata peerId) external view returns (uint256)
+function grantRole(bytes32 role, address account) external
+function revokeRole(bytes32 role, address account) external
 ```
 
-Get detailed voting information including:
-
-- Number of times a voter has voted
-- Votes cast by a specific voter in a round
-- Number of votes received by a peer in a round
-
-### For Administrators
-
-#### Owner
-
-Manages contract configuration and roles.
-
-```solidity
-function grantRole(bytes32 role, address account)
-function revokeRole(bytes32 role, address account)
-```
-
-The deployer of the contract is automatically granted the roles:
-
+Available roles:
 - `OWNER_ROLE`
-- `STAGE_MANAGER_ROLE`
+- `ROUND_MANAGER_ROLE`
 - `BOOTNODE_MANAGER_ROLE`
 
-To grant a role to a new account, the owner can call `grantRole` with:
+Role management events:
+- `role`: The role identifier (e.g., `OWNER_ROLE`, `ROUND_MANAGER_ROLE`, `BOOTNODE_MANAGER_ROLE`)
+- `account`: The account to grant or revoke the role from
 
-- `role`: The role identifier (e.g., `OWNER_ROLE`, `STAGE_MANAGER_ROLE`, `BOOTNODE_MANAGER_ROLE`)
-- `account`: The address to grant the role to
-
-For example, to grant the STAGE_MANAGER_ROLE to an address:
+For example, to grant the ROUND_MANAGER_ROLE to an address:
 
 ```solidity
-grantRole(STAGE_MANAGER_ROLE, 0x1234...5678)
+grantRole(ROUND_MANAGER_ROLE, 0x1234...5678)
 ```
 
-Roles can be revoked using `revokeRole` with the same parameters.
-
-#### Stage Manager
-
-Advances stages and rounds.
+#### Check Role Membership
 
 ```solidity
-function updateStageAndRound() external returns (uint256, uint256)
+function hasRole(bytes32 role, address account) external view returns (bool)
 ```
 
-#### Bootnode manager
+#### Advance Rounds
 
-Manages bootnode list.
+Only callable by accounts with the `ROUND_MANAGER_ROLE`.
 
 ```solidity
-function addBootnodes(string[] calldata newBootnodes)
-function removeBootnode(uint256 index)
-function clearBootnodes()
-function getBootnodesCount() external view returns (uint256)
+function advanceRound() external returns (uint256)
+```
+
+#### Manage Bootnodes
+
+Only callable by accounts with the `BOOTNODE_MANAGER_ROLE`.
+
+```solidity
+function addBootnodes(string[] calldata newBootnodes) external
+function removeBootnode(uint256 index) external
+function clearBootnodes() external
 ```
 
 ## Development

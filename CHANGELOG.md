@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0]
+
+### Changed
+
+- Simplified round/stage system to use only rounds (removed complex stage logic since `_stageCount = 1`)
+- Renamed `STAGE_MANAGER_ROLE` to `ROUND_MANAGER_ROLE` for clarity
+- Simplified `updateStageAndRound()` to `advanceRound()` function
+- Simplified reward submission from stage-based to round-based (`submitReward` no longer takes stage parameter)
+- Renamed `getRoundStageReward` to `getRoundReward` and `hasSubmittedRoundStageReward` to `hasSubmittedRoundReward`
+
+### Removed
+
+- `_currentStage` state variable (always 0 since only 1 stage per round)
+- `stageCount()` function (hardcoded to 1, no longer needed)
+- `currentStage()` function (not useful with single stage)
+- `StageAdvanced` event (no longer relevant)
+- `StageOutOfBounds` error (unused)
+- `InvalidStageNumber` error (no longer needed)
+- `getVoterVoteCount()` function (limited utility voter tracking)
+- `uniqueVoters()` function (simple counter with limited utility) 
+- `_voterVoteCounts` mapping (voter frequency tracking)
+- `_uniqueVoters` counter (voter count tracking)
+- Complex stage validation logic in reward submission
+- Redundant `uint256` overload of `submitReward` (was just a wrapper)
+
+### Fixed
+
+- Gas efficiency improved by removing unnecessary complexity
+- Cleaner and more focused contract interface
+
 ## [0.5.1]
 
 ### Added
