@@ -50,17 +50,20 @@ contract SwarmCoordinatorPermissionsTest is Test {
         vm.stopPrank();
     }
 
-    function test_Owner_CanAdd_StageManagers() public {
+    function test_Owner_CanAdd_RoundManagers() public {
         vm.startPrank(_owner);
-        swarmCoordinator.grantRole(swarmCoordinator.STAGE_MANAGER_ROLE(), _newAccount);
-        assertEq(swarmCoordinator.hasRole(swarmCoordinator.STAGE_MANAGER_ROLE(), _newAccount), true);
+        swarmCoordinator.grantRole(swarmCoordinator.ROUND_MANAGER_ROLE(), _newAccount);
+        assertEq(swarmCoordinator.hasRole(swarmCoordinator.ROUND_MANAGER_ROLE(), _newAccount), true);
         vm.stopPrank();
     }
 
-    function test_Owner_CanRemove_StageManagers() public {
+    function test_Owner_CanRemove_RoundManagers() public {
         vm.startPrank(_owner);
-        swarmCoordinator.grantRole(swarmCoordinator.STAGE_MANAGER_ROLE(), _newAccount);
-        assertEq(swarmCoordinator.hasRole(swarmCoordinator.STAGE_MANAGER_ROLE(), _newAccount), true);
+        swarmCoordinator.grantRole(swarmCoordinator.ROUND_MANAGER_ROLE(), _newAccount);
+        assertEq(swarmCoordinator.hasRole(swarmCoordinator.ROUND_MANAGER_ROLE(), _newAccount), true);
+
+        swarmCoordinator.revokeRole(swarmCoordinator.ROUND_MANAGER_ROLE(), _newAccount);
+        assertEq(swarmCoordinator.hasRole(swarmCoordinator.ROUND_MANAGER_ROLE(), _newAccount), false);
         vm.stopPrank();
     }
 
@@ -75,6 +78,9 @@ contract SwarmCoordinatorPermissionsTest is Test {
         vm.startPrank(_owner);
         swarmCoordinator.grantRole(swarmCoordinator.BOOTNODE_MANAGER_ROLE(), _newAccount);
         assertEq(swarmCoordinator.hasRole(swarmCoordinator.BOOTNODE_MANAGER_ROLE(), _newAccount), true);
+
+        swarmCoordinator.revokeRole(swarmCoordinator.BOOTNODE_MANAGER_ROLE(), _newAccount);
+        assertEq(swarmCoordinator.hasRole(swarmCoordinator.BOOTNODE_MANAGER_ROLE(), _newAccount), false);
         vm.stopPrank();
     }
 }

@@ -5,7 +5,7 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 
 /**
  * @title SwarmCoordinator
- * @dev Manages coordination of a swarm network including round/stage progression,
+ * @dev Manages coordination of a swarm network including round progression,
  * peer registration, bootnode management, and winner selection.
  */
 contract SwarmCoordinator is UUPSUpgradeable {
@@ -22,10 +22,6 @@ contract SwarmCoordinator is UUPSUpgradeable {
 
     // Current round number
     uint256 _currentRound = 0;
-    // Current stage within the round
-    uint256 _currentStage = 0;
-    // Total number of stages in a round
-    uint256 constant _stageCount = 1;
     // Maps EOA addresses to their corresponding peer IDs
     mapping(address => string[]) _eoaToPeerId;
     // Maps peer IDs to their corresponding EOA addresses
@@ -34,30 +30,14 @@ contract SwarmCoordinator is UUPSUpgradeable {
     // Winner management state
     // Maps peer ID to total number of wins
     mapping(string => uint256) private _totalWins;
-    // Array of top winners (sorted by wins)
-    string[] private _topWinners;
-    // Maximum number of top winners to track
-    uint256 private constant MAX_TOP_WINNERS = 100;
     // Maps round number to mapping of voter address to their voted peer IDs
     mapping(uint256 => mapping(string => string[])) private _roundVotes;
-    // Maps round number to mapping of peer ID to number of votes received
-    mapping(uint256 => mapping(string => uint256)) private _roundVoteCounts;
-    // Maps voter address to number of times they have voted
-    mapping(string => uint256) private _voterVoteCounts;
-    // Array of top voters (sorted by number of votes)
-    string[] private _topVoters;
-    // Number of unique voters who have participated
-    uint256 private _uniqueVoters;
-    // Number of unique peers that have been voted on
-    uint256 private _uniqueVotedPeers;
-    // Maps peer ID to whether it has been voted on in any round
-    mapping(string => bool) private _hasBeenVotedOn;
     // List of bootnode addresses/endpoints
     string[] private _bootnodes;
-    // Maps round number and stage to mapping of account address to their submitted reward
-    mapping(uint256 => mapping(uint256 => mapping(address => int256))) private _roundStageRewards;
-    // Maps round number and stage to mapping of peer ID to whether they have submitted a reward
-    mapping(uint256 => mapping(uint256 => mapping(string => bool))) private _hasSubmittedRoundStageReward;
+    // Maps round number to mapping of account address to their submitted reward
+    mapping(uint256 => mapping(address => int256)) private _roundRewards;
+    // Maps round number to mapping of peer ID to whether they have submitted a reward
+    mapping(uint256 => mapping(string => bool)) private _hasSubmittedRoundReward;
     // Maps peer ID to their total rewards across all rounds
     mapping(string => int256) private _totalRewards;
 
@@ -76,7 +56,7 @@ contract SwarmCoordinator is UUPSUpgradeable {
 
     bytes32 public constant OWNER_ROLE = keccak256("OWNER_ROLE");
     bytes32 public constant BOOTNODE_MANAGER_ROLE = keccak256("BOOTNODE_MANAGER_ROLE");
-    bytes32 public constant STAGE_MANAGER_ROLE = keccak256("STAGE_MANAGER_ROLE");
+    bytes32 public constant ROUND_MANAGER_ROLE = keccak256("ROUND_MANAGER_ROLE");
 
     // .-------------------------------------------------------------.
     // | ██████████                                  █████           |
@@ -89,7 +69,6 @@ contract SwarmCoordinator is UUPSUpgradeable {
     // |░░░░░░░░░░    ░░░░░     ░░░░░░  ░░░░ ░░░░░    ░░░░░  ░░░░░░  |
     // '-------------------------------------------------------------'
 
-    event StageAdvanced(uint256 indexed roundNumber, uint256 newStage);
     event RoundAdvanced(uint256 indexed newRoundNumber);
     event PeerRegistered(address indexed eoa, string peerId);
     event BootnodesAdded(address indexed manager, uint256 count);
@@ -98,9 +77,7 @@ contract SwarmCoordinator is UUPSUpgradeable {
     event WinnerSubmitted(address indexed account, string peerId, uint256 indexed roundNumber, string[] winners);
     event RoleGranted(bytes32 indexed role, address indexed account, address indexed sender);
     event RoleRevoked(bytes32 indexed role, address indexed account, address indexed sender);
-    event RewardSubmitted(
-        address indexed account, uint256 indexed roundNumber, uint256 indexed stageNumber, int256 reward, string peerId
-    );
+    event RewardSubmitted(address indexed account, uint256 indexed roundNumber, int256 reward, string peerId);
     event CumulativeRewardsUpdated(address indexed account, string peerId, int256 totalRewards);
 
     // .----------------------------------------------------------.
@@ -114,7 +91,6 @@ contract SwarmCoordinator is UUPSUpgradeable {
     // |░░░░░░░░░░ ░░░░░     ░░░░░      ░░░░░░  ░░░░░     ░░░░░░  |
     // '----------------------------------------------------------'
 
-    error StageOutOfBounds();
     error InvalidBootnodeIndex();
     error InvalidRoundNumber();
     error WinnerAlreadyVoted();
@@ -122,9 +98,8 @@ contract SwarmCoordinator is UUPSUpgradeable {
     error InvalidVoterPeerId();
     error OnlyOwner();
     error OnlyBootnodeManager();
-    error OnlyStageManager();
+    error OnlyRoundManager();
     error RewardAlreadySubmitted();
-    error InvalidStageNumber();
     error InvalidVote();
 
     // .-------------------------------------------------------------------------------------.
@@ -144,9 +119,9 @@ contract SwarmCoordinator is UUPSUpgradeable {
         _;
     }
 
-    // Stage manager modifier
-    modifier onlyStageManager() {
-        require(_roleToAddress[STAGE_MANAGER_ROLE][msg.sender], OnlyStageManager());
+    // Round manager modifier
+    modifier onlyRoundManager() {
+        require(_roleToAddress[ROUND_MANAGER_ROLE][msg.sender], OnlyRoundManager());
         _;
     }
 
@@ -169,7 +144,7 @@ contract SwarmCoordinator is UUPSUpgradeable {
 
     function initialize(address owner_) external initializer {
         _grantRole(OWNER_ROLE, owner_);
-        _grantRole(STAGE_MANAGER_ROLE, owner_);
+        _grantRole(ROUND_MANAGER_ROLE, owner_);
         _grantRole(BOOTNODE_MANAGER_ROLE, owner_);
         __UUPSUpgradeable_init();
     }
@@ -250,40 +225,14 @@ contract SwarmCoordinator is UUPSUpgradeable {
     }
 
     /**
-     * @dev Returns the current stage number within the round
-     * @return Current stage number
+     * @dev Advances to the next round
+     * @return The new round number
+     * @notice Only callable by the round manager
      */
-    function currentStage() public view returns (uint256) {
-        return _currentStage;
-    }
-
-    /**
-     * @dev Returns the total number of stages in a round
-     * @return Number of stages
-     */
-    function stageCount() public pure returns (uint256) {
-        return _stageCount;
-    }
-
-    /**
-     * @dev Updates the current stage and round
-     * @return The current round and stage after any updates
-     * @notice Only callable by the stage manager
-     */
-    function updateStageAndRound() external onlyStageManager returns (uint256, uint256) {
-        if (_currentStage + 1 >= _stageCount) {
-            // If we're at the last stage, advance to the next round
-            _currentRound++;
-            _currentStage = 0;
-            emit RoundAdvanced(_currentRound);
-        } else {
-            // Otherwise, advance to the next stage
-            _currentStage = _currentStage + 1;
-        }
-
-        emit StageAdvanced(_currentRound, _currentStage);
-
-        return (_currentRound, _currentStage);
+    function advanceRound() external onlyRoundManager returns (uint256) {
+        _currentRound++;
+        emit RoundAdvanced(_currentRound);
+        return _currentRound;
     }
 
     // .-------------------------------------------------.
@@ -450,15 +399,7 @@ contract SwarmCoordinator is UUPSUpgradeable {
         // Record the vote
         _roundVotes[roundNumber][peerId] = winners;
 
-        // If this is the first time this peer has voted, increment unique voters
-        if (_voterVoteCounts[peerId] == 0) {
-            _uniqueVoters++;
-        }
-
-        // Update how many times each voter has voted
-        _voterVoteCounts[peerId]++;
-
-        // Update total wins and top winners
+        // Update total wins
         for (uint256 i = 0; i < winners.length; i++) {
             _totalWins[winners[i]]++;
         }
@@ -477,15 +418,6 @@ contract SwarmCoordinator is UUPSUpgradeable {
     }
 
     /**
-     * @dev Gets the number of times a voter has voted
-     * @param peerId The peer ID of the voter
-     * @return The number of times the voter has voted
-     */
-    function getVoterVoteCount(string calldata peerId) external view returns (uint256) {
-        return _voterVoteCounts[peerId];
-    }
-
-    /**
      * @dev Gets the total number of wins for a peer ID
      * @param peerId The peer ID to query
      * @return The total number of wins for the peer ID
@@ -495,93 +427,54 @@ contract SwarmCoordinator is UUPSUpgradeable {
     }
 
     /**
-     * @dev Gets the total number of unique voters who have participated
-     * @return The number of unique voters
-     */
-    function uniqueVoters() external view returns (uint256) {
-        return _uniqueVoters;
-    }
-
-    /**
-     * @dev Monkey patch to accept uint256 rewards, temporary solution
+     * @dev Submits a reward for a specific round
      * @param roundNumber The round number for which to submit the reward
-     * @param stageNumber The stage number for which to submit the reward
      * @param reward The reward amount to submit (can be positive or negative)
      * @param peerId The peer ID reporting the rewards
      */
-    function submitReward(uint256 roundNumber, uint256 stageNumber, uint256 reward, string calldata peerId) external {
-        submitReward(roundNumber, stageNumber, int256(reward), peerId);
-    }
-
-    /**
-     * @dev Submits a reward for a specific round and stage
-     * @param roundNumber The round number for which to submit the reward
-     * @param stageNumber The stage number for which to submit the reward
-     * @param reward The reward amount to submit (can be positive or negative)
-     * @param peerId The peer ID reporting the rewards
-     */
-    function submitReward(uint256 roundNumber, uint256 stageNumber, int256 reward, string calldata peerId) public {
+    function submitReward(uint256 roundNumber, int256 reward, string calldata peerId) external {
         // Check if round number is valid (must be less than or equal to current round)
         if (roundNumber > _currentRound) revert InvalidRoundNumber();
 
-        // Check if stage number is valid
-        if (roundNumber == _currentRound) {
-            // If round is current round, stage number must be less than or equal to current stage
-            if (stageNumber > _currentStage) revert InvalidStageNumber();
-        } else {
-            // If round is not current round, stage number must be less than stage count
-            if (stageNumber > _stageCount) revert InvalidStageNumber();
-        }
-
-        // Check if peer ID has already submitted a reward for this round and stage
-        if (_hasSubmittedRoundStageReward[roundNumber][stageNumber][peerId]) revert RewardAlreadySubmitted();
+        // Check if peer ID has already submitted a reward for this round
+        if (_hasSubmittedRoundReward[roundNumber][peerId]) revert RewardAlreadySubmitted();
 
         // Check if the peer ID belongs to the sender
         if (_peerIdToEoa[peerId] != msg.sender) revert InvalidVoterPeerId();
 
         // Record the reward
-        _roundStageRewards[roundNumber][stageNumber][msg.sender] += reward;
-        _hasSubmittedRoundStageReward[roundNumber][stageNumber][peerId] = true;
+        _roundRewards[roundNumber][msg.sender] += reward;
+        _hasSubmittedRoundReward[roundNumber][peerId] = true;
 
         // Update total rewards per peerId
         _totalRewards[peerId] += reward;
 
-        emit RewardSubmitted(msg.sender, roundNumber, stageNumber, reward, peerId);
+        emit RewardSubmitted(msg.sender, roundNumber, reward, peerId);
         emit CumulativeRewardsUpdated(msg.sender, peerId, _totalRewards[peerId]);
     }
 
     /**
-     * @dev Gets the reward submitted by accounts for a specific round and stage
+     * @dev Gets the reward submitted by accounts for a specific round
      * @param roundNumber The round number to query
-     * @param stageNumber The stage number to query
      * @param accounts Array of addresses to query
      * @return rewards Array of corresponding reward amounts for each account
      */
-    function getRoundStageReward(uint256 roundNumber, uint256 stageNumber, address[] calldata accounts)
-        external
-        view
-        returns (int256[] memory)
-    {
+    function getRoundReward(uint256 roundNumber, address[] calldata accounts) external view returns (int256[] memory) {
         int256[] memory rewards = new int256[](accounts.length);
         for (uint256 i = 0; i < accounts.length; i++) {
-            rewards[i] = _roundStageRewards[roundNumber][stageNumber][accounts[i]];
+            rewards[i] = _roundRewards[roundNumber][accounts[i]];
         }
         return rewards;
     }
 
     /**
-     * @dev Checks if a peer ID has submitted a reward for a specific round and stage
+     * @dev Checks if a peer ID has submitted a reward for a specific round
      * @param roundNumber The round number to check
-     * @param stageNumber The stage number to check
      * @param peerId The peer ID to check
-     * @return True if the peer ID has submitted a reward for that round and stage, false otherwise
+     * @return True if the peer ID has submitted a reward for that round, false otherwise
      */
-    function hasSubmittedRoundStageReward(uint256 roundNumber, uint256 stageNumber, string calldata peerId)
-        external
-        view
-        returns (bool)
-    {
-        return _hasSubmittedRoundStageReward[roundNumber][stageNumber][peerId];
+    function hasSubmittedRoundReward(uint256 roundNumber, string calldata peerId) external view returns (bool) {
+        return _hasSubmittedRoundReward[roundNumber][peerId];
     }
 
     /**
