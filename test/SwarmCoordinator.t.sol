@@ -810,7 +810,7 @@ contract SwarmCoordinatorTest is Test {
         winners1[0] = "QmWinner1";
         string[] memory winners2 = new string[](1);
         winners2[0] = "QmWinner2";
-       
+
         string memory voterPeerId = "QmVoter1";
 
         // Register peer IDs first

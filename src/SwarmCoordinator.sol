@@ -461,7 +461,10 @@ contract SwarmCoordinator is UUPSUpgradeable {
      * @param winners The list of peer IDs that should win
      * @param peerId The peer ID of the voter
      */
-    function submitWinners(uint256 roundNumber, string[] memory winners, string calldata peerId) external winnerTimeLock {
+    function submitWinners(uint256 roundNumber, string[] memory winners, string calldata peerId)
+        external
+        winnerTimeLock
+    {
         _submitWinners(roundNumber, winners, peerId);
     }
 
@@ -471,8 +474,14 @@ contract SwarmCoordinator is UUPSUpgradeable {
      * @param winners Array of peer ID winners per round
      * @param peerIds Array of peer IDs of the voters
      */
-    function batchSubmitWinners(uint256[] calldata roundNumbers, string[][] calldata winners, string[] calldata peerIds) external winnerTimeLock {
-        require(roundNumbers.length == winners.length && roundNumbers.length == peerIds.length, MismatchedBatchInputLengths());
+    function batchSubmitWinners(uint256[] calldata roundNumbers, string[][] calldata winners, string[] calldata peerIds)
+        external
+        winnerTimeLock
+    {
+        require(
+            roundNumbers.length == winners.length && roundNumbers.length == peerIds.length,
+            MismatchedBatchInputLengths()
+        );
 
         for (uint256 i = 0; i < roundNumbers.length; i++) {
             _submitWinners(roundNumbers[i], winners[i], peerIds[i]);
@@ -554,14 +563,17 @@ contract SwarmCoordinator is UUPSUpgradeable {
     }
 
     /**
-     * @dev Monkey patch to accept uint256 rewards, temporary solution. Callable once per TIME_LOCK_DURATION 
+     * @dev Monkey patch to accept uint256 rewards, temporary solution. Callable once per TIME_LOCK_DURATION
      * @notice This function is deprecated - batchSubmitRewards should be used instead
      * @param roundNumber The round number for which to submit the reward
      * @param stageNumber The stage number for which to submit the reward
      * @param reward The reward amount to submit (can be positive or negative)
      * @param peerId The peer ID reporting the rewards
      */
-    function submitReward(uint256 roundNumber, uint256 stageNumber, uint256 reward, string calldata peerId) external rewardTimeLock {
+    function submitReward(uint256 roundNumber, uint256 stageNumber, uint256 reward, string calldata peerId)
+        external
+        rewardTimeLock
+    {
         _submitReward(roundNumber, stageNumber, int256(reward), peerId);
     }
 
@@ -573,7 +585,10 @@ contract SwarmCoordinator is UUPSUpgradeable {
      * @param reward The reward amount to submit (can be positive or negative)
      * @param peerId The peer ID reporting the rewards
      */
-    function submitReward(uint256 roundNumber, uint256 stageNumber, int256 reward, string calldata peerId) external rewardTimeLock{
+    function submitReward(uint256 roundNumber, uint256 stageNumber, int256 reward, string calldata peerId)
+        external
+        rewardTimeLock
+    {
         _submitReward(roundNumber, stageNumber, reward, peerId);
     }
 
@@ -588,9 +603,13 @@ contract SwarmCoordinator is UUPSUpgradeable {
         uint256[] calldata roundNumbers,
         uint256[] calldata stageNumbers,
         uint256[] calldata rewards,
-        string[] calldata peerIds 
+        string[] calldata peerIds
     ) external rewardTimeLock {
-        require(roundNumbers.length == stageNumbers.length && roundNumbers.length == rewards.length && roundNumbers.length == peerIds.length, MismatchedBatchInputLengths());
+        require(
+            roundNumbers.length == stageNumbers.length && roundNumbers.length == rewards.length
+                && roundNumbers.length == peerIds.length,
+            MismatchedBatchInputLengths()
+        );
 
         for (uint256 i = 0; i < roundNumbers.length; i++) {
             _submitReward(roundNumbers[i], stageNumbers[i], int256(rewards[i]), peerIds[i]);
