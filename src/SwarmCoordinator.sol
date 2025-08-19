@@ -466,13 +466,13 @@ contract SwarmCoordinator is UUPSUpgradeable {
      * @dev Submits winners for multiple rounds. Callable once per TIME_LOCK_DURATION
      * @param roundNumbers Array of round numbers for which to submit winners
      * @param winners Array of peer ID winners per round
-     * @param peerId The peer ID of the voter
+     * @param peerIds Array of peer IDs of the voters
      */
-    function batchSubmitWinners(uint256[] calldata roundNumbers, string[][] calldata winners, string calldata peerId) external winnerTimeLock {
-        require(roundNumbers.length == winners.length, MismatchedBatchInputLengths());
+    function batchSubmitWinners(uint256[] calldata roundNumbers, string[][] calldata winners, string[] calldata peerIds) external winnerTimeLock {
+        require(roundNumbers.length == winners.length && roundNumbers.length == peerIds.length, MismatchedBatchInputLengths());
 
         for (uint256 i = 0; i < roundNumbers.length; i++) {
-            _submitWinners(roundNumbers[i], winners[i], peerId);
+            _submitWinners(roundNumbers[i], winners[i], peerIds[i]);
         }
     }
 
@@ -579,18 +579,18 @@ contract SwarmCoordinator is UUPSUpgradeable {
      * @param roundNumbers Array of round numbers for which to submit rewards
      * @param stageNumbers Array of stage numbers for which to submit rewards
      * @param rewards Array of reward amounts to submit (can be positive or negative)
-     * @param peerId The peer ID reporting the rewards
+     * @param peerIds Array of peer IDs reporting the rewards
      */
-    function submitBatchRewards(
+    function batchSubmitRewards(
         uint256[] calldata roundNumbers,
         uint256[] calldata stageNumbers,
         uint256[] calldata rewards,
-        string calldata peerId
+        string[] calldata peerIds 
     ) external rewardTimeLock {
-        require(roundNumbers.length == stageNumbers.length && roundNumbers.length == rewards.length, MismatchedBatchInputLengths());
+        require(roundNumbers.length == stageNumbers.length && roundNumbers.length == rewards.length && roundNumbers.length == peerIds.length, MismatchedBatchInputLengths());
 
         for (uint256 i = 0; i < roundNumbers.length; i++) {
-            _submitReward(roundNumbers[i], stageNumbers[i], int256(rewards[i]), peerId);
+            _submitReward(roundNumbers[i], stageNumbers[i], int256(rewards[i]), peerIds[i]);
         }
     }
 
