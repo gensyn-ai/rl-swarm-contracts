@@ -165,11 +165,12 @@ contract SwarmCoordinator is UUPSUpgradeable {
     }
 
     // Restricts winner submissions to once per TIME_LOCK_DURATION
-    error TestTimeLockActive(uint256 blockTime, uint256 lastSubmissionTime);
     modifier winnerTimeLock() {
         // Check if the time lock has passed since the last winners submission
-        require(block.timestamp >= _lastWinnersSubmissionTime[msg.sender] + TIME_LOCK_DURATION, TestTimeLockActive(block.timestamp, _lastWinnersSubmissionTime[msg.sender]));
-    
+        if (_lastWinnersSubmissionTime[msg.sender] > 0) {
+            require(block.timestamp >= _lastWinnersSubmissionTime[msg.sender] + TIME_LOCK_DURATION, TimeLockActive());
+        }
+
         // Update the last winners submission time
         _lastWinnersSubmissionTime[msg.sender] = block.timestamp;
         _;
@@ -178,7 +179,9 @@ contract SwarmCoordinator is UUPSUpgradeable {
     // Restricts reward submissions to once per TIME_LOCK_DURATION
     modifier rewardTimeLock() {
         // Check if the time lock has passed since the last reward submission
-        require(block.timestamp >= _lastRewardSubmissionTime[msg.sender] + TIME_LOCK_DURATION, TestTimeLockActive(block.timestamp, _lastRewardSubmissionTime[msg.sender]));
+        if (_lastRewardSubmissionTime[msg.sender] > 0) {
+            require(block.timestamp >= _lastRewardSubmissionTime[msg.sender] + TIME_LOCK_DURATION, TimeLockActive());
+        }
 
         // Update the last reward submission time
         _lastRewardSubmissionTime[msg.sender] = block.timestamp;
