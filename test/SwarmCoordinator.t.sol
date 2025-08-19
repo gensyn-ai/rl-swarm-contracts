@@ -461,6 +461,7 @@ contract SwarmCoordinatorTest is Test {
 
         // Try to vote again
         vm.prank(_user1);
+        vm.warp(block.timestamp + swarmCoordinator.TIME_LOCK_DURATION()); // bypass time lock
         vm.expectRevert(SwarmCoordinator.WinnerAlreadyVoted.selector);
         swarmCoordinator.submitWinners(0, winners, winners[0]);
     }
@@ -501,6 +502,7 @@ contract SwarmCoordinatorTest is Test {
         swarmCoordinator.submitReward(0, 0, reward1, peerId1);
 
         // Try to submit again with same peer ID
+        vm.warp(block.timestamp + swarmCoordinator.TIME_LOCK_DURATION()); // bypass time lock
         vm.expectRevert(SwarmCoordinator.RewardAlreadySubmitted.selector);
         swarmCoordinator.submitReward(0, 0, reward2, peerId1);
         vm.stopPrank();
@@ -521,6 +523,7 @@ contract SwarmCoordinatorTest is Test {
         swarmCoordinator.submitReward(0, 0, reward1, peerId1);
 
         // Submit reward with second peer ID
+        vm.warp(block.timestamp + swarmCoordinator.TIME_LOCK_DURATION()); // bypass time lock
         swarmCoordinator.submitReward(0, 0, reward2, peerId2);
         vm.stopPrank();
 
@@ -554,6 +557,7 @@ contract SwarmCoordinatorTest is Test {
 
         // Submit reward in stage 1
         vm.startPrank(_user1);
+        vm.warp(block.timestamp + swarmCoordinator.TIME_LOCK_DURATION()); // bypass time lock
         vm.expectEmit(true, true, true, true);
         emit SwarmCoordinator.RewardSubmitted(_user1, 0, 1, reward2, peerId1);
         vm.expectEmit(true, true, true, true);
@@ -594,6 +598,7 @@ contract SwarmCoordinatorTest is Test {
 
         // Submit reward in round 1
         vm.startPrank(_user1);
+        vm.warp(block.timestamp + swarmCoordinator.TIME_LOCK_DURATION()); // bypass time lock
         vm.expectEmit(true, true, true, true);
         emit SwarmCoordinator.RewardSubmitted(_user1, 1, 0, reward2, peerId1);
         vm.expectEmit(true, true, true, true);
@@ -798,5 +803,57 @@ contract SwarmCoordinatorTest is Test {
         // Verify vote count
         uint256 voteCount = swarmCoordinator.getVoterVoteCount(voterPeerId);
         assertEq(voteCount, 1, "Registered voter should have correct vote count");
+    }
+
+    function test_SubmitWinners_TimeLocked() public {
+        string[] memory winners1 = new string[](1);
+        winners1[0] = "QmWinner1";
+        string[] memory winners2 = new string[](1);
+        winners2[0] = "QmWinner2";
+       
+        string memory voterPeerId = "QmVoter1";
+
+        // Register peer IDs first
+        vm.prank(_user1);
+        swarmCoordinator.registerPeer(voterPeerId);
+
+        // Submit winners for round 0
+        vm.prank(_user1);
+        vm.expectEmit(true, true, true, true);
+        emit SwarmCoordinator.WinnerSubmitted(_user1, voterPeerId, 0, winners1);
+        swarmCoordinator.submitWinners(0, winners1, voterPeerId);
+
+        // Forward to next round
+        _forwardToNextRound();
+
+        // Submit winners for round 1 before the time lock expires
+        vm.prank(_user1);
+        vm.expectRevert(SwarmCoordinator.TimeLockActive.selector);
+        swarmCoordinator.submitWinners(1, winners2, voterPeerId);
+    }
+
+    function test_SubmitReward_TimeLocked() public {
+        int256 reward = 100;
+        string memory peerId = "QmPeer1";
+
+        // Register peer ID first
+        vm.prank(_user1);
+        swarmCoordinator.registerPeer(peerId);
+
+        // Submit reward for round 0, stage 0
+        vm.prank(_user1);
+        vm.expectEmit(true, true, true, true);
+        emit SwarmCoordinator.RewardSubmitted(_user1, 0, 0, reward, peerId);
+        vm.expectEmit(true, true, true, true);
+        emit SwarmCoordinator.CumulativeRewardsUpdated(_user1, peerId, reward);
+        swarmCoordinator.submitReward(0, 0, reward, peerId);
+
+        // Forward to next round
+        _forwardToNextRound();
+
+        // Try to submit reward for round 1 before the time lock expires
+        vm.prank(_user1);
+        vm.expectRevert(SwarmCoordinator.TimeLockActive.selector);
+        swarmCoordinator.submitReward(1, 0, reward, peerId);
     }
 }
