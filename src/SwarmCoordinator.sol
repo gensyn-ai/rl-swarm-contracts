@@ -295,7 +295,6 @@ contract SwarmCoordinator is UUPSUpgradeable {
         bytes32[] memory randomPeerIds = new bytes32[](count);
 
         for (uint256 i = 0; i < count; ){
-            // TODO: Implement sampling without replacement
             uint256 randomIndex = uint256(keccak256(abi.encodePacked(block.timestamp, seed, i))) % peerCount;
             if (_selectedPeerIds.contains(randomIndex)) continue;
 
