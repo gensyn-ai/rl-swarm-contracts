@@ -2,6 +2,8 @@
 pragma solidity ^0.8;
 
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 
 /**
  * @title SwarmCoordinator
@@ -9,6 +11,10 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
  * peer registration, bootnode management, and winner selection.
  */
 contract SwarmCoordinator is UUPSUpgradeable {
+    using EnumerableSet for EnumerableSet.Bytes32Set;
+    using EnumerableSet for EnumerableSet.UintSet;
+    using EnumerableMap for EnumerableMap.Bytes32ToAddressMap;
+
     // .---------------------------------------------------.
     // |  █████████   █████               █████            |
     // | ███░░░░░███ ░░███               ░░███             |
@@ -22,14 +28,20 @@ contract SwarmCoordinator is UUPSUpgradeable {
 
     // Current round number
     uint256 _currentRound = 0;
+    // Number of voters per round
+    uint256 constant _votersPerRound = 10;
+    // Allowed voters for the current round. The value is a set of keccak256 hashes of peerIds
+    mapping(uint256 => EnumerableSet.Bytes32Set) _currentRoundVoters;
+    // Helper for selecting random peers
+    EnumerableSet.UintSet private _selectedPeerIds;
     // Current stage within the round
     uint256 _currentStage = 0;
     // Total number of stages in a round
     uint256 constant _stageCount = 1;
     // Maps EOA addresses to their corresponding peer IDs
     mapping(address => string[]) _eoaToPeerId;
-    // Maps peer IDs to their corresponding EOA addresses
-    mapping(string => address) _peerIdToEoa;
+    // Maps keccak256 hashes of peer IDs to their corresponding EOA address
+    EnumerableMap.Bytes32ToAddressMap _peerIdToEoa;
 
     // Winner management state
     // Maps peer ID to total number of wins
@@ -126,6 +138,7 @@ contract SwarmCoordinator is UUPSUpgradeable {
     error RewardAlreadySubmitted();
     error InvalidStageNumber();
     error InvalidVote();
+    error NotAllowedVoter();
 
     // .-------------------------------------------------------------------------------------.
     // | ██████   ██████              █████  ███     ██████   ███                            |
@@ -171,6 +184,11 @@ contract SwarmCoordinator is UUPSUpgradeable {
         _grantRole(OWNER_ROLE, owner_);
         _grantRole(STAGE_MANAGER_ROLE, owner_);
         _grantRole(BOOTNODE_MANAGER_ROLE, owner_);
+
+        // Set the voters for the initial round
+        // TODO: How to handle peers that disconnect mid round?
+
+
         __UUPSUpgradeable_init();
     }
 
@@ -265,6 +283,37 @@ contract SwarmCoordinator is UUPSUpgradeable {
         return _stageCount;
     }
 
+    function _selectRandomPeerIds(uint256 count, bytes32 seed) internal returns (bytes32[] memory) {
+        // Select a random peer ID from the registered peers
+        uint256 peerCount = _peerIdToEoa.length();
+        require(peerCount > 0, "No peers registered");
+
+        if (count > peerCount) {
+            count = peerCount;
+        }
+
+        bytes32[] memory randomPeerIds = new bytes32[](count);
+
+        for (uint256 i = 0; i < count; ){
+            // TODO: Implement sampling without replacement
+            uint256 randomIndex = uint256(keccak256(abi.encodePacked(block.timestamp, seed, i))) % peerCount;
+            if (_selectedPeerIds.contains(randomIndex)) continue;
+
+            (bytes32 peerId, ) = _peerIdToEoa.at(randomIndex);
+            randomPeerIds[i] = peerId;
+            _selectedPeerIds.add(randomIndex);
+            i++;
+        }
+
+        // Clear the selected peers set for the next call
+        uint256[] memory selectedIndices = _selectedPeerIds.values();
+        for (uint256 i = 0; i < selectedIndices.length; i++) {
+            _selectedPeerIds.remove(selectedIndices[i]);
+        }
+
+        return randomPeerIds;
+    }
+
     /**
      * @dev Updates the current stage and round
      * @return The current round and stage after any updates
@@ -275,6 +324,13 @@ contract SwarmCoordinator is UUPSUpgradeable {
             // If we're at the last stage, advance to the next round
             _currentRound++;
             _currentStage = 0;
+
+            // Select the new round's voters
+            bytes32[] memory randomPeers = _selectRandomPeerIds(_votersPerRound, bytes32(_currentRound));
+            for (uint256 i = 0; i < randomPeers.length; i++) {
+                _currentRoundVoters[_currentRound].add(randomPeers[i]);
+            }
+
             emit RoundAdvanced(_currentRound);
         } else {
             // Otherwise, advance to the next stage
@@ -284,6 +340,14 @@ contract SwarmCoordinator is UUPSUpgradeable {
         emit StageAdvanced(_currentRound, _currentStage);
 
         return (_currentRound, _currentStage);
+    }
+
+    function getCurrentRoundVoters() external view returns (uint256, bytes32[] memory) {
+        return (_currentRound, _currentRoundVoters[_currentRound].values());
+    }
+
+    function isCurrentRoundVoter(string calldata peerId) external view returns (bool) {
+        return _currentRoundVoters[_currentRound].contains(keccak256(bytes(peerId)));
     }
 
     // .-------------------------------------------------.
@@ -305,11 +369,11 @@ contract SwarmCoordinator is UUPSUpgradeable {
         address eoa = msg.sender;
 
         // Check if the peer ID is already registered
-        if (_peerIdToEoa[peerId] != address(0)) revert PeerIdAlreadyRegistered();
+        if (_peerIdToEoa.get(keccak256(bytes(peerId))) != address(0)) revert PeerIdAlreadyRegistered();
 
         // Set new mappings
         _eoaToPeerId[eoa].push(peerId);
-        _peerIdToEoa[peerId] = eoa;
+        _peerIdToEoa.set(keccak256(bytes(peerId)), eoa);
 
         emit PeerRegistered(eoa, peerId);
     }
@@ -335,7 +399,7 @@ contract SwarmCoordinator is UUPSUpgradeable {
     function getEoa(string[] calldata peerIds) external view returns (address[] memory) {
         address[] memory eoas = new address[](peerIds.length);
         for (uint256 i = 0; i < peerIds.length; i++) {
-            eoas[i] = _peerIdToEoa[peerIds[i]];
+            eoas[i] = _peerIdToEoa.get(keccak256(bytes(peerIds[i])));
         }
         return eoas;
     }
@@ -432,11 +496,14 @@ contract SwarmCoordinator is UUPSUpgradeable {
         // Check if round number is valid (must be less than or equal to current round)
         if (roundNumber > _currentRound) revert InvalidRoundNumber();
 
+        // Check if the sender is an allowed voter
+        if (!_currentRoundVoters[roundNumber].contains(keccak256(bytes(peerId)))) revert NotAllowedVoter();
+
         // Check if sender has already voted
         if (_roundVotes[roundNumber][peerId].length > 0) revert WinnerAlreadyVoted();
 
         // Check if the peer ID belongs to the sender
-        if (_peerIdToEoa[peerId] != msg.sender) revert InvalidVoterPeerId();
+        if (_peerIdToEoa.get(keccak256(bytes(peerId))) != msg.sender) revert InvalidVoterPeerId();
 
         // Check for duplicate winners
         for (uint256 i = 0; i < winners.length; i++) {
@@ -460,6 +527,7 @@ contract SwarmCoordinator is UUPSUpgradeable {
 
         // Update total wins and top winners
         for (uint256 i = 0; i < winners.length; i++) {
+            // TODO: Is it useful to track individual winner votes? Or just the round winner
             _totalWins[winners[i]]++;
         }
 
@@ -537,7 +605,7 @@ contract SwarmCoordinator is UUPSUpgradeable {
         if (_hasSubmittedRoundStageReward[roundNumber][stageNumber][peerId]) revert RewardAlreadySubmitted();
 
         // Check if the peer ID belongs to the sender
-        if (_peerIdToEoa[peerId] != msg.sender) revert InvalidVoterPeerId();
+        if (_peerIdToEoa.get(keccak256(bytes(peerId))) != msg.sender) revert InvalidVoterPeerId();
 
         // Record the reward
         _roundStageRewards[roundNumber][stageNumber][msg.sender] += reward;
