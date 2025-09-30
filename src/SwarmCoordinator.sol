@@ -34,24 +34,12 @@ contract SwarmCoordinator is UUPSUpgradeable {
     // Winner management state
     // Maps peer ID to total number of wins
     mapping(string => uint256) private _totalWins;
-    // Array of top winners (sorted by wins)
-    string[] private _topWinners;
-    // Maximum number of top winners to track
-    uint256 private constant MAX_TOP_WINNERS = 100;
     // Maps round number to mapping of voter address to their voted peer IDs
     mapping(uint256 => mapping(string => string[])) private _roundVotes;
-    // Maps round number to mapping of peer ID to number of votes received
-    mapping(uint256 => mapping(string => uint256)) private _roundVoteCounts;
     // Maps voter address to number of times they have voted
     mapping(string => uint256) private _voterVoteCounts;
-    // Array of top voters (sorted by number of votes)
-    string[] private _topVoters;
     // Number of unique voters who have participated
     uint256 private _uniqueVoters;
-    // Number of unique peers that have been voted on
-    uint256 private _uniqueVotedPeers;
-    // Maps peer ID to whether it has been voted on in any round
-    mapping(string => bool) private _hasBeenVotedOn;
     // List of bootnode addresses/endpoints
     string[] private _bootnodes;
     // Maps round number and stage to mapping of account address to their submitted reward
