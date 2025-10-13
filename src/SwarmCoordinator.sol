@@ -440,10 +440,16 @@ contract SwarmCoordinator is UUPSUpgradeable {
 
         // Check for duplicate winners
         for (uint256 i = 0; i < winners.length; i++) {
-            for (uint256 j = i + 1; j < winners.length; j++) {
-                if (keccak256(bytes(winners[i])) == keccak256(bytes(winners[j]))) {
-                    revert InvalidVote();
-                }
+            bytes32 winnerHash = keccak256(bytes(winners[i]));
+            uint256 alreadySet;
+            assembly {
+                alreadySet := tload(winnerHash)
+            }
+            if (alreadySet != 0) {
+                revert InvalidVote();
+            }
+            assembly {
+                tstore(winnerHash, 1)
             }
         }
 
