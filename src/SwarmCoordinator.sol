@@ -74,9 +74,15 @@ contract SwarmCoordinator is UUPSUpgradeable {
 
     mapping(bytes32 => mapping(address => bool)) private _roleToAddress;
 
+    // Time locks for submitWinners and submitReward functions
+    // These should only be modified by the corresponding modifier
+    mapping(address => uint256) private _lastWinnersSubmissionTime;
+    mapping(address => uint256) private _lastRewardSubmissionTime;
+
     bytes32 public constant OWNER_ROLE = keccak256("OWNER_ROLE");
     bytes32 public constant BOOTNODE_MANAGER_ROLE = keccak256("BOOTNODE_MANAGER_ROLE");
     bytes32 public constant STAGE_MANAGER_ROLE = keccak256("STAGE_MANAGER_ROLE");
+    uint256 public constant TIME_LOCK_DURATION = 3 hours; // 3 hour time lock for winner/reward submissions
 
     // .-------------------------------------------------------------.
     // | ██████████                                  █████           |
@@ -126,6 +132,8 @@ contract SwarmCoordinator is UUPSUpgradeable {
     error RewardAlreadySubmitted();
     error InvalidStageNumber();
     error InvalidVote();
+    error TimeLockActive();
+    error MismatchedBatchInputLengths();
 
     // .-------------------------------------------------------------------------------------.
     // | ██████   ██████              █████  ███     ██████   ███                            |
@@ -153,6 +161,30 @@ contract SwarmCoordinator is UUPSUpgradeable {
     // Bootnode manager modifier
     modifier onlyBootnodeManager() {
         require(_roleToAddress[BOOTNODE_MANAGER_ROLE][msg.sender], OnlyBootnodeManager());
+        _;
+    }
+
+    // Restricts winner submissions to once per TIME_LOCK_DURATION
+    modifier winnerTimeLock() {
+        // Check if the time lock has passed since the last winners submission
+        if (_lastWinnersSubmissionTime[msg.sender] > 0) {
+            require(block.timestamp >= _lastWinnersSubmissionTime[msg.sender] + TIME_LOCK_DURATION, TimeLockActive());
+        }
+
+        // Update the last winners submission time
+        _lastWinnersSubmissionTime[msg.sender] = block.timestamp;
+        _;
+    }
+
+    // Restricts reward submissions to once per TIME_LOCK_DURATION
+    modifier rewardTimeLock() {
+        // Check if the time lock has passed since the last reward submission
+        if (_lastRewardSubmissionTime[msg.sender] > 0) {
+            require(block.timestamp >= _lastRewardSubmissionTime[msg.sender] + TIME_LOCK_DURATION, TimeLockActive());
+        }
+
+        // Update the last reward submission time
+        _lastRewardSubmissionTime[msg.sender] = block.timestamp;
         _;
     }
 
@@ -423,12 +455,40 @@ contract SwarmCoordinator is UUPSUpgradeable {
     // '-------------------------------------------------------------------------------------'
 
     /**
-     * @dev Submits a list of winners for a specific round
+     * @dev Submits a list of winners for a specific round. Callable once per TIME_LOCK_DURATION
+     * @notice This function is deprecated - batchSubmitWinners should be used instead
      * @param roundNumber The round number for which to submit the winners
      * @param winners The list of peer IDs that should win
      * @param peerId The peer ID of the voter
      */
-    function submitWinners(uint256 roundNumber, string[] memory winners, string calldata peerId) external {
+    function submitWinners(uint256 roundNumber, string[] memory winners, string calldata peerId)
+        external
+        winnerTimeLock
+    {
+        _submitWinners(roundNumber, winners, peerId);
+    }
+
+    /**
+     * @dev Submits winners for multiple rounds. Callable once per TIME_LOCK_DURATION
+     * @param roundNumbers Array of round numbers for which to submit winners
+     * @param winners Array of peer ID winners per round
+     * @param peerIds Array of peer IDs of the voters
+     */
+    function batchSubmitWinners(uint256[] calldata roundNumbers, string[][] calldata winners, string[] calldata peerIds)
+        external
+        winnerTimeLock
+    {
+        require(
+            roundNumbers.length == winners.length && roundNumbers.length == peerIds.length,
+            MismatchedBatchInputLengths()
+        );
+
+        for (uint256 i = 0; i < roundNumbers.length; i++) {
+            _submitWinners(roundNumbers[i], winners[i], peerIds[i]);
+        }
+    }
+
+    function _submitWinners(uint256 roundNumber, string[] memory winners, string calldata peerId) internal {
         // Check if round number is valid (must be less than or equal to current round)
         if (roundNumber > _currentRound) revert InvalidRoundNumber();
 
@@ -503,24 +563,60 @@ contract SwarmCoordinator is UUPSUpgradeable {
     }
 
     /**
-     * @dev Monkey patch to accept uint256 rewards, temporary solution
+     * @dev Monkey patch to accept uint256 rewards, temporary solution. Callable once per TIME_LOCK_DURATION
+     * @notice This function is deprecated - batchSubmitRewards should be used instead
      * @param roundNumber The round number for which to submit the reward
      * @param stageNumber The stage number for which to submit the reward
      * @param reward The reward amount to submit (can be positive or negative)
      * @param peerId The peer ID reporting the rewards
      */
-    function submitReward(uint256 roundNumber, uint256 stageNumber, uint256 reward, string calldata peerId) external {
-        submitReward(roundNumber, stageNumber, int256(reward), peerId);
+    function submitReward(uint256 roundNumber, uint256 stageNumber, uint256 reward, string calldata peerId)
+        external
+        rewardTimeLock
+    {
+        _submitReward(roundNumber, stageNumber, int256(reward), peerId);
     }
 
     /**
-     * @dev Submits a reward for a specific round and stage
+     * @dev Submits a reward for a specific round and stage. Callable once per TIME_LOCK_DURATION
+     * @notice This function is deprecated - batchSubmitRewards should be used instead
      * @param roundNumber The round number for which to submit the reward
      * @param stageNumber The stage number for which to submit the reward
      * @param reward The reward amount to submit (can be positive or negative)
      * @param peerId The peer ID reporting the rewards
      */
-    function submitReward(uint256 roundNumber, uint256 stageNumber, int256 reward, string calldata peerId) public {
+    function submitReward(uint256 roundNumber, uint256 stageNumber, int256 reward, string calldata peerId)
+        external
+        rewardTimeLock
+    {
+        _submitReward(roundNumber, stageNumber, reward, peerId);
+    }
+
+    /**
+     * @dev Submits rewards for multiple round and stage combinations. Callable once per TIME_LOCK_DURATION
+     * @param roundNumbers Array of round numbers for which to submit rewards
+     * @param stageNumbers Array of stage numbers for which to submit rewards
+     * @param rewards Array of reward amounts to submit (can be positive or negative)
+     * @param peerIds Array of peer IDs reporting the rewards
+     */
+    function batchSubmitRewards(
+        uint256[] calldata roundNumbers,
+        uint256[] calldata stageNumbers,
+        uint256[] calldata rewards,
+        string[] calldata peerIds
+    ) external rewardTimeLock {
+        require(
+            roundNumbers.length == stageNumbers.length && roundNumbers.length == rewards.length
+                && roundNumbers.length == peerIds.length,
+            MismatchedBatchInputLengths()
+        );
+
+        for (uint256 i = 0; i < roundNumbers.length; i++) {
+            _submitReward(roundNumbers[i], stageNumbers[i], int256(rewards[i]), peerIds[i]);
+        }
+    }
+
+    function _submitReward(uint256 roundNumber, uint256 stageNumber, int256 reward, string calldata peerId) internal {
         // Check if round number is valid (must be less than or equal to current round)
         if (roundNumber > _currentRound) revert InvalidRoundNumber();
 

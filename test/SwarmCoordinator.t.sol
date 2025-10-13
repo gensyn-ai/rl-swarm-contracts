@@ -461,6 +461,7 @@ contract SwarmCoordinatorTest is Test {
 
         // Try to vote again
         vm.prank(_user1);
+        vm.warp(block.timestamp + swarmCoordinator.TIME_LOCK_DURATION()); // bypass time lock
         vm.expectRevert(SwarmCoordinator.WinnerAlreadyVoted.selector);
         swarmCoordinator.submitWinners(0, winners, winners[0]);
     }
@@ -501,6 +502,7 @@ contract SwarmCoordinatorTest is Test {
         swarmCoordinator.submitReward(0, 0, reward1, peerId1);
 
         // Try to submit again with same peer ID
+        vm.warp(block.timestamp + swarmCoordinator.TIME_LOCK_DURATION()); // bypass time lock
         vm.expectRevert(SwarmCoordinator.RewardAlreadySubmitted.selector);
         swarmCoordinator.submitReward(0, 0, reward2, peerId1);
         vm.stopPrank();
@@ -521,6 +523,7 @@ contract SwarmCoordinatorTest is Test {
         swarmCoordinator.submitReward(0, 0, reward1, peerId1);
 
         // Submit reward with second peer ID
+        vm.warp(block.timestamp + swarmCoordinator.TIME_LOCK_DURATION()); // bypass time lock
         swarmCoordinator.submitReward(0, 0, reward2, peerId2);
         vm.stopPrank();
 
@@ -554,6 +557,7 @@ contract SwarmCoordinatorTest is Test {
 
         // Submit reward in stage 1
         vm.startPrank(_user1);
+        vm.warp(block.timestamp + swarmCoordinator.TIME_LOCK_DURATION()); // bypass time lock
         vm.expectEmit(true, true, true, true);
         emit SwarmCoordinator.RewardSubmitted(_user1, 0, 1, reward2, peerId1);
         vm.expectEmit(true, true, true, true);
@@ -594,6 +598,7 @@ contract SwarmCoordinatorTest is Test {
 
         // Submit reward in round 1
         vm.startPrank(_user1);
+        vm.warp(block.timestamp + swarmCoordinator.TIME_LOCK_DURATION()); // bypass time lock
         vm.expectEmit(true, true, true, true);
         emit SwarmCoordinator.RewardSubmitted(_user1, 1, 0, reward2, peerId1);
         vm.expectEmit(true, true, true, true);
@@ -798,5 +803,194 @@ contract SwarmCoordinatorTest is Test {
         // Verify vote count
         uint256 voteCount = swarmCoordinator.getVoterVoteCount(voterPeerId);
         assertEq(voteCount, 1, "Registered voter should have correct vote count");
+    }
+
+    function test_SubmitWinners_TimeLocked() public {
+        string[] memory winners1 = new string[](1);
+        winners1[0] = "QmWinner1";
+        string[] memory winners2 = new string[](1);
+        winners2[0] = "QmWinner2";
+
+        string memory voterPeerId = "QmVoter1";
+
+        // Register peer IDs first
+        vm.prank(_user1);
+        swarmCoordinator.registerPeer(voterPeerId);
+
+        // Submit winners for round 0
+        vm.prank(_user1);
+        vm.expectEmit(true, true, true, true);
+        emit SwarmCoordinator.WinnerSubmitted(_user1, voterPeerId, 0, winners1);
+        swarmCoordinator.submitWinners(0, winners1, voterPeerId);
+
+        // Forward to next round
+        _forwardToNextRound();
+
+        // Submit winners for round 1 before the time lock expires
+        vm.prank(_user1);
+        vm.expectRevert(SwarmCoordinator.TimeLockActive.selector);
+        swarmCoordinator.submitWinners(1, winners2, voterPeerId);
+    }
+
+    function test_SubmitReward_TimeLocked() public {
+        int256 reward = 100;
+        string memory peerId = "QmPeer1";
+
+        // Register peer ID first
+        vm.prank(_user1);
+        swarmCoordinator.registerPeer(peerId);
+
+        // Submit reward for round 0, stage 0
+        vm.prank(_user1);
+        vm.expectEmit(true, true, true, true);
+        emit SwarmCoordinator.RewardSubmitted(_user1, 0, 0, reward, peerId);
+        vm.expectEmit(true, true, true, true);
+        emit SwarmCoordinator.CumulativeRewardsUpdated(_user1, peerId, reward);
+        swarmCoordinator.submitReward(0, 0, reward, peerId);
+
+        // Forward to next round
+        _forwardToNextRound();
+
+        // Try to submit reward for round 1 before the time lock expires
+        vm.prank(_user1);
+        vm.expectRevert(SwarmCoordinator.TimeLockActive.selector);
+        swarmCoordinator.submitReward(1, 0, reward, peerId);
+    }
+
+    function test_BatchSubmitWinners_Successfully() public {
+        string[] memory winners1 = new string[](2);
+        winners1[0] = "QmWinner1";
+        winners1[1] = "QmWinner2";
+
+        string[] memory winners2 = new string[](2);
+        winners2[0] = "QmWinner3";
+        winners2[1] = "QmWinner4";
+
+        string memory voterPeerId = "QmVoter1";
+
+        uint256[] memory rounds = new uint256[](2);
+        rounds[0] = 0;
+        rounds[1] = 1;
+
+        string[][] memory winners = new string[][](2);
+        winners[0] = winners1;
+        winners[1] = winners2;
+
+        string[] memory voterPeerIds = new string[](2);
+        voterPeerIds[0] = voterPeerId;
+        voterPeerIds[1] = voterPeerId;
+
+        // Register peer ID first
+        vm.prank(_user1);
+        swarmCoordinator.registerPeer(voterPeerId);
+
+        // Advance to round 2
+        _forwardToNextRound();
+        _forwardToNextRound();
+
+        // Batch submit winners for round 0
+        vm.prank(_user1);
+        vm.expectEmit(true, true, true, true);
+        emit SwarmCoordinator.WinnerSubmitted(_user1, voterPeerId, 0, winners1);
+        emit SwarmCoordinator.WinnerSubmitted(_user1, voterPeerId, 0, winners2);
+        swarmCoordinator.batchSubmitWinners(rounds, winners, voterPeerIds);
+
+        // Verify votes
+        string[] memory voterVotes = swarmCoordinator.getVoterVotes(0, voterPeerId);
+        assertEq(voterVotes.length, 2);
+        assertEq(voterVotes[0], winners1[0]);
+        assertEq(voterVotes[1], winners1[1]);
+
+        voterVotes = swarmCoordinator.getVoterVotes(1, voterPeerId);
+        assertEq(voterVotes.length, 2);
+        assertEq(voterVotes[0], winners2[0]);
+        assertEq(voterVotes[1], winners2[1]);
+    }
+
+    function test_BatchSubmitWinners_InvalidInput() public {
+        uint256[] memory rounds = new uint256[](2);
+        uint256[] memory invalidRounds = new uint256[](1);
+
+        string[][] memory winners = new string[][](2);
+        string[][] memory invalidWinners = new string[][](1);
+
+        string[] memory voterPeerIds = new string[](2);
+        string[] memory invalidVoterPeerIds = new string[](1);
+
+        vm.expectRevert(SwarmCoordinator.MismatchedBatchInputLengths.selector);
+        swarmCoordinator.batchSubmitWinners(invalidRounds, winners, voterPeerIds);
+
+        vm.expectRevert(SwarmCoordinator.MismatchedBatchInputLengths.selector);
+        swarmCoordinator.batchSubmitWinners(rounds, invalidWinners, voterPeerIds);
+
+        vm.expectRevert(SwarmCoordinator.MismatchedBatchInputLengths.selector);
+        swarmCoordinator.batchSubmitWinners(rounds, winners, invalidVoterPeerIds);
+    }
+
+    function test_BatchSubmitRewards_Successfully() public {
+        uint256[] memory roundIds = new uint256[](2);
+        roundIds[0] = 0;
+        roundIds[1] = 1;
+
+        uint256[] memory stageNumbers = new uint256[](2);
+        stageNumbers[0] = 0;
+        stageNumbers[1] = 0;
+
+        uint256[] memory rewards = new uint256[](2);
+        rewards[0] = 100;
+        rewards[1] = 200;
+
+        string[] memory peerIds = new string[](2);
+        peerIds[0] = "QmPeer1";
+        peerIds[1] = "QmPeer2";
+
+        // Register peer IDs first
+        vm.prank(_user1);
+        swarmCoordinator.registerPeer(peerIds[0]);
+        vm.prank(_user1);
+        swarmCoordinator.registerPeer(peerIds[1]);
+
+        // Advance to round 2
+        _forwardToNextRound();
+        _forwardToNextRound();
+
+        // Batch submit rewards for rounds 0 and 1
+        vm.prank(_user1);
+        vm.expectEmit(true, true, true, true);
+        emit SwarmCoordinator.RewardSubmitted(_user1, 0, 0, int256(rewards[0]), peerIds[0]);
+        vm.expectEmit(true, true, true, true);
+        emit SwarmCoordinator.CumulativeRewardsUpdated(_user1, peerIds[0], int256(rewards[0]));
+        vm.expectEmit(true, true, true, true);
+        emit SwarmCoordinator.RewardSubmitted(_user1, 1, 0, int256(rewards[1]), peerIds[1]);
+        vm.expectEmit(true, true, true, true);
+        emit SwarmCoordinator.CumulativeRewardsUpdated(_user1, peerIds[1], int256(rewards[1]));
+
+        swarmCoordinator.batchSubmitRewards(roundIds, stageNumbers, rewards, peerIds);
+    }
+
+    function test_BatchSubmitRewards_InvalidInput() public {
+        uint256[] memory roundIds = new uint256[](2);
+        uint256[] memory invalidRoundIds = new uint256[](1);
+
+        uint256[] memory stageNumbers = new uint256[](2);
+        uint256[] memory invalidStageNumbers = new uint256[](1);
+
+        uint256[] memory rewards = new uint256[](2);
+        uint256[] memory invalidRewards = new uint256[](1);
+
+        string[] memory peerIds = new string[](2);
+        string[] memory invalidPeerIds = new string[](1);
+
+        vm.expectRevert(SwarmCoordinator.MismatchedBatchInputLengths.selector);
+        swarmCoordinator.batchSubmitRewards(invalidRoundIds, stageNumbers, rewards, peerIds);
+
+        vm.expectRevert(SwarmCoordinator.MismatchedBatchInputLengths.selector);
+        swarmCoordinator.batchSubmitRewards(roundIds, invalidStageNumbers, rewards, peerIds);
+
+        vm.expectRevert(SwarmCoordinator.MismatchedBatchInputLengths.selector);
+        swarmCoordinator.batchSubmitRewards(roundIds, stageNumbers, invalidRewards, peerIds);
+
+        vm.expectRevert(SwarmCoordinator.MismatchedBatchInputLengths.selector);
+        swarmCoordinator.batchSubmitRewards(roundIds, stageNumbers, rewards, invalidPeerIds);
     }
 }
