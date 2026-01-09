@@ -347,7 +347,7 @@ The script will:
 
 ## FAQ
 
-### How did you generate the ascii sections in the source code?
+### How did you generate the ASCII sections in the source code?
 
 I used https://www.asciiart.eu/text-to-ascii-art with:
 
